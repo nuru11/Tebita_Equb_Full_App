@@ -1,0 +1,289 @@
+// Equb app - MySQL schema
+// Run: npx prisma migrate dev (or db push for prototyping)
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------- Users & Auth ---------------
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String?    @unique @db.VarChar(255)
+  phone        String     @unique @db.VarChar(20)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  fullName     String     @map("full_name") @db.VarChar(120)
+  avatarUrl    String?    @map("avatar_url") @db.VarChar(500)
+  isVerified   Boolean    @default(false) @map("is_verified")
+  kyc          Boolean    @default(false) @map("kyc")
+  status       UserStatus @default(PENDING)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  organizedEqubs Equb[]               @relation("EqubOrganizer")
+  memberships    EqubMember[]
+  notifications  Notification[]
+  paymentTxns    PaymentTransaction[]
+  refreshTokens  RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id") @db.VarChar(36)
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// --------------- Admin (separate from User) ---------------
+model Admin {
+  id           String    @id @default(cuid())
+  username     String    @unique @db.VarChar(120)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(120)
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([username])
+  @@index([role])
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+// --------------- Equb Groups ---------------
+model Equb {
+  id                 String          @id @default(cuid())
+  name               String          @db.VarChar(120)
+  description        String?         @db.Text
+  type               EqubType        @default(PRIVATE)
+  equbType           String?         @map("equb_type") @db.VarChar(60)
+  contributionAmount Decimal         @map("contribution_amount") @db.Decimal(12, 2)
+  currency           String          @default("ETB") @db.VarChar(5)
+  frequency          EqubFrequency   @default(MONTHLY)
+  payoutOrderType    PayoutOrderType @default(FIXED_ORDER) @map("payout_order_type")
+  maxMembers         Int             @map("max_members") // 0 = no limit
+  currentCycleNumber Int             @default(0) @map("current_cycle_number")
+  inviteCode         String?         @unique @map("invite_code") @db.VarChar(20)
+  isInviteOnly       Boolean         @default(false) @map("is_invite_only")
+  status             EqubStatus      @default(DRAFT)
+  memberType         MemberType      @default(MEMBER) @map("member_type")
+  startDate          DateTime?       @map("start_date") @db.Date
+  endDate            DateTime?       @map("end_date") @db.Date
+  // Bank details for offline payments
+  bankName           String?         @map("bank_name") @db.VarChar(120)
+  bankAccountName    String?         @map("bank_account_name") @db.VarChar(120)
+  bankAccountNumber  String?         @map("bank_account_number") @db.VarChar(50)
+  bankInstructions   String?         @map("bank_instructions") @db.Text
+  organizerId        String?         @map("organizer_id") @db.VarChar(36)
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  organizer   User?                @relation("EqubOrganizer", fields: [organizerId], references: [id], onDelete: SetNull)
+  members     EqubMember[]
+  rounds      EqubRound[]
+  paymentTxns PaymentTransaction[]
+
+  @@index([organizerId])
+  @@index([status])
+  @@index([inviteCode])
+}
+
+enum EqubType {
+  PUBLIC
+  PRIVATE
+  CORPORATE
+  PARTNERSHIP
+}
+
+enum EqubFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PayoutOrderType {
+  FIXED_ORDER // predefined order (e.g. 1,2,3...)
+  LOTTERY // random draw each round
+  BIDDING // members bid to take pot early
+  NEED_BASED // group votes who gets it
+}
+
+enum EqubStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum MemberType {
+  MERCHANT
+  EMPLOYEE
+  MEMBER
+  ORGANIZER
+}
+
+// --------------- Membership ---------------
+model EqubMember {
+  id          String       @id @default(cuid())
+  equbId      String       @map("equb_id") @db.VarChar(36)
+  userId      String       @map("user_id") @db.VarChar(36)
+  role        MemberRole   @default(MEMBER)
+  payoutOrder Int?         @map("payout_order") // 1-based, for FIXED_ORDER; null for LOTTERY
+  status      MemberStatus @default(ACTIVE)
+  joinedAt    DateTime     @default(now()) @map("joined_at")
+
+  equb          Equb           @relation(fields: [equbId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions Contribution[]
+  roundsWon     EqubRound[]    @relation("RoundWinner")
+
+  @@unique([equbId, userId])
+  @@index([userId])
+  @@index([equbId])
+}
+
+enum MemberRole {
+  ORGANIZER
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+// --------------- Rounds (one cycle = one round per member) ---------------
+model EqubRound {
+  id          String      @id @default(cuid())
+  equbId      String      @map("equb_id") @db.VarChar(36)
+  roundNumber Int         @map("round_number")
+  dueDate     DateTime    @map("due_date") @db.Date
+  potAmount   Decimal?    @map("pot_amount") @db.Decimal(12, 2)
+  status      RoundStatus @default(PENDING)
+  winnerId    String?     @map("winner_id") @db.VarChar(36)
+  drawnAt     DateTime?   @map("drawn_at") @db.DateTime(3)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  equb          Equb                 @relation(fields: [equbId], references: [id], onDelete: Cascade)
+  winner        EqubMember?          @relation("RoundWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  contributions Contribution[]
+  paymentTxns   PaymentTransaction[] @relation("RoundPayments")
+
+  @@unique([equbId, roundNumber])
+  @@index([equbId])
+  @@index([winnerId])
+}
+
+enum RoundStatus {
+  PENDING // not yet started
+  COLLECTING // accepting contributions
+  DRAWN // winner selected, payout pending
+  COMPLETED // payout done
+}
+
+// --------------- Contributions (per member per round) ---------------
+model Contribution {
+  id         String             @id @default(cuid())
+  roundId    String             @map("round_id") @db.VarChar(36)
+  memberId   String             @map("member_id") @db.VarChar(36)
+  amount     Decimal            @db.Decimal(12, 2)
+  status     ContributionStatus @default(PENDING)
+  paidAt     DateTime?          @map("paid_at") @db.DateTime(3)
+  paymentRef String?            @map("payment_ref") @db.VarChar(100)
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  round       EqubRound            @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  member      EqubMember           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  paymentTxns PaymentTransaction[] @relation("ContributionPayments")
+
+  @@unique([roundId, memberId])
+  @@index([roundId])
+  @@index([memberId])
+}
+
+enum ContributionStatus {
+  PENDING
+  PAID
+  LATE
+  WAIVED
+}
+
+// --------------- Payment audit / gateway log ---------------
+model PaymentTransaction {
+  id             String      @id @default(cuid())
+  userId         String      @map("user_id") @db.VarChar(36)
+  equbId         String?     @map("equb_id") @db.VarChar(36)
+  roundId        String?     @map("round_id") @db.VarChar(36)
+  contributionId String?     @map("contribution_id") @db.VarChar(36)
+  type           PaymentType
+  amount         Decimal     @db.Decimal(12, 2)
+  currency       String      @default("ETB") @db.VarChar(5)
+  status         TxStatus    @default(PENDING)
+  reference      String?     @db.VarChar(100)
+  metadata       Json?
+  screenshotUrl  String?     @map("screenshot_url") @db.VarChar(500)
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  equb         Equb?         @relation(fields: [equbId], references: [id], onDelete: SetNull)
+  round        EqubRound?    @relation("RoundPayments", fields: [roundId], references: [id], onDelete: SetNull)
+  contribution Contribution? @relation("ContributionPayments", fields: [contributionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([equbId])
+  @@index([createdAt])
+  @@index([roundId])
+  @@index([contributionId])
+}
+
+enum PaymentType {
+  CONTRIBUTION
+  PAYOUT
+}
+
+enum TxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// --------------- Notifications (reminders, announcements) ---------------
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id") @db.VarChar(36)
+  title     String    @db.VarChar(120)
+  body      String?   @db.Text
+  type      String    @db.VarChar(50) // e.g. CONTRIBUTION_REMINDER, ROUND_WON
+  readAt    DateTime? @map("read_at") @db.DateTime(3)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}

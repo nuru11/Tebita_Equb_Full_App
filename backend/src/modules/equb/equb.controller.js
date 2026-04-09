@@ -46,6 +46,25 @@ const equbController = {
       });
       return;
     }
+    if (
+      body.startDate == null ||
+      body.startDate === '' ||
+      body.endDate == null ||
+      body.endDate === ''
+    ) {
+      res.status(400).json({ error: 'startDate and endDate are required' });
+      return;
+    }
+    const startDate = new Date(body.startDate);
+    const endDate = new Date(body.endDate);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      res.status(400).json({ error: 'Invalid startDate or endDate' });
+      return;
+    }
+    if (endDate < startDate) {
+      res.status(400).json({ error: 'endDate must be on or after startDate' });
+      return;
+    }
     const organizerId = body.organizerId ?? body.organizer_id;
     const equbType = (body.equbType ?? body.equb_type ?? '').toString().trim();
     const equb = await equbService.create({
@@ -61,8 +80,8 @@ const equbController = {
       currentCycleNumber: body.currentCycleNumber ?? 0,
       status: body.status ?? 'DRAFT',
       memberType: body.memberType ?? 'MEMBER',
-      startDate: body.startDate ? new Date(body.startDate) : undefined,
-      endDate: body.endDate ? new Date(body.endDate) : undefined,
+      startDate,
+      endDate,
       bankName: body.bankName,
       bankAccountName: body.bankAccountName,
       bankAccountNumber: body.bankAccountNumber,

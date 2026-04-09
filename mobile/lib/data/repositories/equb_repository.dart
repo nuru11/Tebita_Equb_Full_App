@@ -79,6 +79,7 @@ class EqubRepository {
 
   /// Returns rounds for an equb (from GET /api/equbs/:equbId/rounds).
   /// Each map has id, roundNumber, status (PENDING, COLLECTING, DRAWN, COMPLETED), etc.
+  /// For members, [winner.user] includes [phoneMasked] only (no raw [phone]).
   Future<List<Map<String, dynamic>>> getRounds(String equbId) async {
     final response = await _api.dio.get<List<dynamic>>(
       ApiConstants.equbRounds(equbId),
@@ -103,6 +104,7 @@ class EqubRepository {
 
   /// Returns full round detail including contributions (from GET /api/equbs/:equbId/rounds/:roundId).
   /// Each contribution has id, member: { user: { id, ... } }, etc.
+  /// For members, nested users expose [phoneMasked] instead of [phone].
   Future<Map<String, dynamic>> getRoundById(String equbId, String roundId) async {
     final response = await _api.dio.get<Map<String, dynamic>>(
       ApiConstants.equbRoundById(equbId, roundId),

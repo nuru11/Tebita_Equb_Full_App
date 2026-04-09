@@ -1,4 +1,5 @@
 const { roundService } = require('./round.service');
+const { presentRoundForMember, isAdminRequest } = require('./round.presenter');
 
 const roundController = {
   async list(req, res) {
@@ -8,17 +9,30 @@ const roundController = {
       return;
     }
     const list = await roundService.listByEqub(equbId);
-    res.json(list);
+    if (isAdminRequest(req)) {
+      res.json(list);
+      return;
+    }
+    res.json(list.map((r) => presentRoundForMember(r.toJSON())));
   },
 
   async getById(req, res) {
-    const { roundId } = req.params;
+    const { roundId, equbId } = req.params;
     const round = await roundService.getById(roundId);
     if (!round) {
       res.status(404).json({ error: 'Round not found' });
       return;
     }
-    res.json(round);
+    if (round.equbId !== equbId) {
+      res.status(404).json({ error: 'Round not found' });
+      return;
+    }
+    const plain = round.toJSON();
+    if (isAdminRequest(req)) {
+      res.json(plain);
+      return;
+    }
+    res.json(presentRoundForMember(plain));
   },
 
   async create(req, res) {

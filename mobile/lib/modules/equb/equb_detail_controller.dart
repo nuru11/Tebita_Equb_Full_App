@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 
+import '../../data/equb_schedule.dart';
 import '../../data/models/equb_model.dart';
 import '../../data/repositories/equb_repository.dart';
 import '../home/home_controller.dart';
@@ -7,17 +10,34 @@ import '../home/home_controller.dart';
 class EqubDetailController extends GetxController {
   final EqubRepository _repo = Get.find<EqubRepository>();
 
+  /// Set from route args; used when refreshing before [equb] is loaded.
+  String? _routeEqubId;
+
   final Rx<EqubModel?> equb = Rx<EqubModel?>(null);
   final RxBool isLoading = true.obs;
   final RxBool isJoining = false.obs;
   final RxBool isLeaving = false.obs;
   final RxString errorMessage = ''.obs;
 
+  final RxBool roundsSummaryLoading = false.obs;
+  final RxString roundsSummaryError = ''.obs;
+  final Rxn<DateTime> nextRoundDueSummary = Rxn<DateTime>();
+  final Rxn<String> lastWinnerSummary = Rxn<String>();
+
   @override
   void onInit() {
     super.onInit();
+    if (Get.isRegistered<HomeController>()) {
+      ever<List<String>>(Get.find<HomeController>().joinedEqubIds, (ids) {
+        final e = equb.value;
+        if (e != null && ids.contains(e.id)) {
+          unawaited(_loadRoundsSummary(e.id));
+        }
+      });
+    }
     final arg = Get.arguments;
     final id = arg is String ? arg : null;
+    _routeEqubId = id;
     if (id != null) {
       _load(id);
     } else {
@@ -31,11 +51,45 @@ class EqubDetailController extends GetxController {
     errorMessage.value = '';
     try {
       equb.value = await _repo.getById(id);
+      if (isJoined) {
+        unawaited(_loadRoundsSummary(id));
+      }
     } catch (e) {
       errorMessage.value = 'Failed to load equb';
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<void> _loadRoundsSummary(String equbId) async {
+    roundsSummaryLoading.value = true;
+    roundsSummaryError.value = '';
+    try {
+      final raw = await _repo.getRounds(equbId);
+      final rounds = raw.map((e) => Map<String, dynamic>.from(e)).toList();
+      nextRoundDueSummary.value = parseNextRoundDueDate(rounds);
+      lastWinnerSummary.value = lastWinnerSummaryLine(rounds);
+    } catch (_) {
+      roundsSummaryError.value = 'Could not load schedule';
+      nextRoundDueSummary.value = null;
+      lastWinnerSummary.value = null;
+    } finally {
+      roundsSummaryLoading.value = false;
+    }
+  }
+
+  void refreshRoundsSummaryIfJoined() {
+    final id = equb.value?.id;
+    if (id != null && isJoined) {
+      unawaited(_loadRoundsSummary(id));
+    }
+  }
+
+  /// Pull-to-refresh and app bar refresh.
+  Future<void> refresh() async {
+    final id = equb.value?.id ?? _routeEqubId;
+    if (id == null || id.isEmpty) return;
+    await _load(id);
   }
 
   bool get isJoined {
@@ -64,6 +118,7 @@ class EqubDetailController extends GetxController {
         }
         home.fetchEqubs();
       }
+      refreshRoundsSummaryIfJoined();
       success = true;
     } catch (e) {
       errorMessage.value = 'Failed to join equb';

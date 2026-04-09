@@ -99,23 +99,23 @@ class ProfileScreen extends GetView<AuthController> {
                       ? null
                       : () => Get.to(() => const NotificationsScreen()),
                 ),
-                _SettingsTileData(
-                  icon: Icons.g_translate_rounded,
-                  title: 'Languages',
-                  onTap: () => _comingSoon(context),
-                ),
-                _SettingsTileData(
-                  icon: Icons.palette_outlined,
-                  title: 'Theme',
-                  trailing: Text(
-                    'Light',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  onTap: () => _comingSoon(context),
-                ),
+                // _SettingsTileData(
+                //   icon: Icons.g_translate_rounded,
+                //   title: 'Languages',
+                //   onTap: () => _comingSoon(context),
+                // ),
+                // _SettingsTileData(
+                //   icon: Icons.palette_outlined,
+                //   title: 'Theme',
+                //   trailing: Text(
+                //     'Light',
+                //     style: theme.textTheme.bodySmall?.copyWith(
+                //       color: theme.colorScheme.onSurface.withOpacity(0.6),
+                //       fontWeight: FontWeight.w700,
+                //     ),
+                //   ),
+                //   onTap: () => _comingSoon(context),
+                // ),
                 _SettingsTileData(
                   icon: Icons.info_outline_rounded,
                   title: 'Terms & Conditions',

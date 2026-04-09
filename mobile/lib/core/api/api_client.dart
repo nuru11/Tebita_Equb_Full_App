@@ -7,7 +7,7 @@ import '../storage/secure_storage.dart';
 /// Register [onSessionExpired] in [InitialBinding] to redirect to login when refresh fails.
 class ApiClient {
   static const String _defaultBaseUrl = 'https://equbapi.shinur.com';
-  // static const String _defaultBaseUrl = 'http://172.20.10.5:3000';
+  // static const String _defaultBaseUrl = 'http://192.168.1.4:3000';
 
   final Dio _dio;
   final SecureStorage _storage;

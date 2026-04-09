@@ -31,6 +31,19 @@ function requireAuth(req, res, next) {
 }
 
 /**
+ * Logged-in end user OR admin (JWT). Use for routes shared by mobile (user) and admin panel.
+ */
+function requireUserOrAdmin(req, res, next) {
+  const isAdmin = req.accountType === 'admin' && req.adminId;
+  const isUser = req.userId || req.user;
+  if (!isAdmin && !isUser) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+}
+
+/**
  * Require admin (accountType === 'admin'). Use for admin-only routes.
  */
 function requireAdmin(req, res, next) {
@@ -41,4 +54,4 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { attachUser, requireAuth, requireAdmin };
+module.exports = { attachUser, requireAuth, requireUserOrAdmin, requireAdmin };
